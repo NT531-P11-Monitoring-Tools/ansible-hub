@@ -1,0 +1,42 @@
+all:
+    children:
+        bastion:
+        monitoring:
+        cluster:
+    vars:
+        ansible_user: ubuntu
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3
+        project: group01
+
+bastion:
+    hosts:
+        bastion_host:
+            ansible_host: 192.168.130.30 # i-0ce7e45ae8506f4ed
+    vars:
+        subnet: public-subnet
+
+monitoring:
+    hosts:
+        monitoring_fe_host:
+            ansible_host: 192.168.120.20 # i-0c3df9bf4f33ca16c
+        monitoring_be_host:
+            ansible_host: 192.168.120.21 # i-0fc415cb43d819f09
+    vars:
+        subnet: private-subnet-1
+
+cluster:
+    hosts:
+        k3s_master_host:
+            ansible_host: 192.168.110.10 # i-0ea31fc297aef3a28
+        k3s_worker_host_1:
+            ansible_host: 192.168.110.11 # i-0d2eef00d5a60d147
+        k3s_worker_host_2:
+            ansible_host: 192.168.110.12 # i-08ef18a2069c18abb
+    vars:
+        subnet: private-subnet-0
+        k3s_version: v1.30.2+k3s1
+        token: "qEpvPaNbCGujxSZB2w3k9F7tgJ8syAQr"
+        api_endpoint: "{{ hostvars[groups['cluster'][0]]['ansible_host'] }}"
+        extra_server_args: ""
+        extra_agent_args: ""

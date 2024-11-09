@@ -1,0 +1,304 @@
+---
+- name: Ensure apt cache is up to date
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install pip
+  ansible.builtin.apt:
+    name: python3-pip
+    state: present
+  become: true
+
+- name: Install MySQL Python package
+  ansible.builtin.pip:
+    name: PyMySQL
+    state: present
+  become: true
+
+- name: Install Icinga2 and Nagios Monitoring Plugins
+  block:
+  - name: Add the GPG key of Icinga2
+    ansible.builtin.apt_key:
+      url: https://packages.icinga.com/icinga.key
+    become: true
+
+  - name: Ensure the /etc/apt/sources.list.d directory exists
+    ansible.builtin.file:
+      path: /etc/apt/sources.list.d
+      state: directory
+      mode: '0755'
+
+  - name: Create icinga-focal.list with repository configuration
+    ansible.builtin.copy:
+      dest: /etc/apt/sources.list.d/icinga-focal.list
+      content: |
+        deb http://packages.icinga.com/ubuntu icinga-focal main
+        deb-src http://packages.icinga.com/ubuntu icinga-focal main
+      mode: '0644'
+
+  - name: Update the package list
+    ansible.builtin.apt:
+      update_cache: true
+
+  - name: Install Icinga2 and monitoring plugins
+    ansible.builtin.apt:
+      name:
+        - icinga2
+        - monitoring-plugins
+      state: present
+
+  - name: Start Icinga2 service
+    ansible.builtin.systemd:
+      name: icinga2
+      state: started
+
+  - name: Enable Icinga2 service to start on boot
+    ansible.builtin.systemd:
+      name: icinga2
+      enabled: true
+
+- name: Install and Configure MySQL Database Server
+  block:
+    - name: Install MySQL Server
+      ansible.builtin.apt:
+        name: 
+        - mysql-server
+        - mysql-client
+        state: present
+
+    - name: Start MySQL Service
+      ansible.builtin.systemd:
+        name: mysql
+        state: started
+
+    - name: Enable MySQL Service to start on boot
+      ansible.builtin.systemd:
+        name: mysql
+        enabled: true
+# mysql_secure_installation
+    - name: mysql_secure_installation 
+      become: true
+      expect:
+        command: mysql_secure_installation
+        responses:
+          'Enter current password for root': ''
+          'Set root password': '{{ mysql_root_password }}'
+          'Remove anonymous users': 'y'
+          'Disallow root login remotely': 'n'
+          'Remove test database': 'y'
+          'Reload privilege tables now': 'y'
+        timeout: 1
+      register: secure_mariadb
+      failed_when: "'... Failed!' in secure_mariadb.stdout_lines"
+
+- name: Install and Configure Icinga2 MySQL Module
+  block:
+  - name: Install icinga2-ido-mysql package
+    ansible.builtin.apt:
+      name: icinga2-ido-mysql
+      state: present
+
+  - name: Enable ido-mysql feature for Icinga2
+    ansible.builtin.command:
+      cmd: icinga2 feature enable ido-mysql
+
+  - name: Configure ido-mysql with dbconfig
+    ansible.builtin.command:
+      cmd: icinga2 ido-mysql config
+    register: dbconfig_output
+    become: true
+
+  # - name: Grant all privileges to root user
+  #   ansible.builtin.mysql_query:
+  #     query: "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
+  #     login_user: root
+  #     login_password: '{{ mysql_root_password }}'
+  #     login_unix_socket: "/var/run/mysqld/mysqld.sock"
+  #   become: true
+
+  - name: Set MySQL password for icinga2 user for all hosts
+    ansible.builtin.mysql_user:
+      name: icinga2
+      password: '{{ icinga_db_password }}'
+      state: present
+      host: "%"
+      login_user: root
+      login_password: '{{ mysql_root_password }}'
+      login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+  - name: Set MySQL password for icinga2 user for localhost
+    ansible.builtin.mysql_user:
+      name: icinga2
+      password: '{{ icinga_db_password }}'
+      state: present
+      host: "localhost"
+      login_user: root
+      login_password: '{{ mysql_root_password }}'
+      login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+  - name: Change authentication method for root MySQL user
+    ansible.builtin.mysql_query:
+      query: "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ icinga_db_password }}';"
+      login_user: root
+      login_password: "{{ mysql_root_password }}"
+      login_unix_socket: "/var/run/mysqld/mysqld.sock"
+    register: query_result
+
+  - name: Change authentication method for icinga2 MySQL user for all hosts
+    ansible.builtin.mysql_query:
+      query: "ALTER USER 'icinga2'@'%' IDENTIFIED WITH mysql_native_password BY '{{ icinga_db_password }}';"
+      login_user: root
+      login_password: '{{ mysql_root_password }}'
+      login_unix_socket: "/var/run/mysqld/mysqld.sock"
+    register: query_result
+
+  - name: Change authentication method for icinga2 MySQL user for localhost
+    ansible.builtin.mysql_query:
+      login_user: root
+      login_password: '{{ mysql_root_password }}'
+      login_unix_socket: "/var/run/mysqld/mysqld.sock"
+      query: "ALTER USER 'icinga2'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ icinga_db_password }}';"
+    register: query_result
+
+  - name: Enable ido-mysql feature for Icinga2
+    ansible.builtin.command:
+      cmd: icinga2 feature enable ido-mysql
+
+  - name: Replace ido-mysql.conf with updated configuration
+    ansible.builtin.template:
+      src: ido-mysql.conf.j2
+      dest: /etc/icinga2/features-enabled/ido-mysql.conf
+    become: true
+
+  - name: List all enabled Icinga2 features
+    ansible.builtin.command:
+      cmd: icinga2 feature list
+    register: icinga2_features
+
+  - name: Restart Icinga2 service
+    ansible.builtin.systemd:
+      name: icinga2
+      state: restarted
+
+- name: Install Apache2 and PHP Packages
+  block:
+    - name: Install software-properties-common
+      apt:
+        name: software-properties-common
+        state: present
+        update_cache: true
+
+    - name: Add PHP repository
+      ansible.builtin.apt_repository:
+        repo: ppa:ondrej/php
+        state: present
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Apache2 and PHP packages
+      ansible.builtin.apt:
+        name:
+          - apache2
+          - php8.1
+          - php8.1-common
+          - php8.1-gd
+          - php8.1-ldap
+          - php8.1-intl
+          - php8.1-curl
+          - libapache2-mod-php8.1
+          - php8.1-mysql
+          - php8.1-pgsql
+          - php8.1-xml
+          - php8.1-mbstring
+        state: present
+
+    - name: Configure PHP timezone
+      ansible.builtin.lineinfile:
+        path: /etc/php/8.1/apache2/php.ini
+        regexp: '^;?date.timezone ='
+        line: 'date.timezone = Asia/Ho_Chi_Minh'
+
+    - name: Configure cgi.fix_pathinfo
+      ansible.builtin.lineinfile:
+        path: /etc/php/8.1/apache2/php.ini
+        regexp: '^;?cgi.fix_pathinfo='
+        line: 'cgi.fix_pathinfo=0'
+
+    - name: Start and enable Apache service
+      ansible.builtin.systemd:
+        name: apache2
+        state: restarted
+        enabled: true
+
+    # - name: Check PHP version
+    #   ansible.builtin.command: php -v
+    #   register: php_version
+    #   changed_when: false
+
+    # - name: Display PHP version
+    #   ansible.builtin.debug:
+    #     var: php_version.stdout_lines
+
+- name: Install Icinga Web 2
+  block:
+    - name: Install Icinga Web 2 and Icinga CLI
+      ansible.builtin.apt:
+        name:
+          - icingaweb2
+          - icingacli
+        state: present
+        update_cache: true
+
+    - name: Create MySQL database for icingaweb2
+      ansible.builtin.mysql_db:
+        name: icingaweb2
+        state: present
+        login_user: root
+        login_password: '{{ mysql_root_password }}'
+        login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+    - name: Create MySQL user for icingaweb2
+      ansible.builtin.mysql_user:
+        name: icingaweb2
+        password: '{{ icingaweb2_admin_password }}'
+        host: localhost
+        priv: 'icingaweb2.*:ALL'
+        state: present
+        login_user: root
+        login_password: '{{ mysql_root_password }}'
+        login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+    - name: Flush MySQL privileges
+      ansible.builtin.mysql_db:
+        name: icingaweb2
+        state: present
+        collation: utf8_general_ci
+        encoding: utf8
+        login_user: root
+        login_password: '{{ mysql_root_password }}'
+        login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+    - name: Chance ownership of /etc/icingaweb2
+      ansible.builtin.file:
+        path: /etc/icingaweb2
+        owner: www-data
+        group: www-data
+        recurse: true
+
+    - name: Chance permissions of /etc/icingaweb2
+      ansible.builtin.file:
+        path: /etc/icingaweb2
+        mode: '0775'
+        recurse: true
+
+    - name: Generate Icinga Web 2 setup token
+      ansible.builtin.command:
+        cmd: icingacli setup token create
+      register: icinga_token
+      changed_when: false
+
+    - name: Display Icinga Web 2 setup token
+      ansible.builtin.debug:
+        msg: "The newly generated setup token is: {{ icinga_token.stdout }}"

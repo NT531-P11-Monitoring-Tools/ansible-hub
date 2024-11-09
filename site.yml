@@ -1,0 +1,52 @@
+---
+- name: Install HAProxy
+  hosts: bastion_host
+  gather_facts: yes
+  become: yes
+  roles:
+    - haproxy
+
+- name: Install Prometheus & Loki
+  hosts: monitoring_be_host
+  gather_facts: yes
+  become: yes
+  roles:
+    - prometheus
+    # - loki
+
+- name: Install Node Exporter & Promtail
+  hosts: all
+  gather_facts: yes
+  become: yes
+  roles:
+    - node_exporter
+    # - promtail
+
+- name: Install Grafana
+  hosts: monitoring_fe_host
+  gather_facts: yes
+  become: yes
+  roles:
+    - grafana
+    - icinga2
+
+- name: Cluster prep
+  hosts: cluster
+  gather_facts: true
+  become: true
+  roles:
+    - role: k3s_prereq
+
+- name: Setup K3S server
+  hosts: k3s_master_host
+  become: true
+  roles:
+    - role: k3s_server
+
+- name: Setup K3S agent
+  hosts: 
+    - k3s_worker_host_1
+    - k3s_worker_host_2
+  become: true
+  roles:
+    - role: k3s_agent

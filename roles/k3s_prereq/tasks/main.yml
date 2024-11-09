@@ -1,0 +1,122 @@
+---
+- name: Install Dependent Ubuntu Packages
+  when: ansible_distribution in ['Ubuntu']
+  ansible.builtin.apt:
+    name: policycoreutils  # Used by install script to restore SELinux context
+    update_cache: true
+
+- name: Enable IPv4 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    reload: true
+
+- name: Enable IPv6 forwarding
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    state: present
+    reload: true
+  when: ansible_all_ipv6_addresses
+
+- name: Populate service facts
+  ansible.builtin.service_facts:
+
+- name: Allow UFW Exceptions
+  when:
+    - ansible_facts.services['ufw'] is defined
+    - ansible_facts.services['ufw'].state == 'running'
+  block:
+    - name: Get ufw status
+      ansible.builtin.command:
+        cmd: ufw status
+      changed_when: false
+      register: ufw_status
+
+    - name: If ufw enabled, open api port
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        port: "{{ api_port }}"
+        proto: tcp
+
+    - name: If ufw enabled, open etcd ports
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+        - groups[server_group] | length > 1
+      community.general.ufw:
+        rule: allow
+        port: "2379:2381"
+        proto: tcp
+
+    - name: If ufw enabled, allow default CIDRs
+      when:
+        - ufw_status['stdout'] == "Status':' active"
+      community.general.ufw:
+        rule: allow
+        src: '{{ item }}'
+      loop: "{{ (cluster_cidr + ',' + service_cidr) | split(',') }}"
+
+- name: Allow Firewalld Exceptions
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - ansible_facts.services['firewalld.service'].state == 'running'
+  block:
+    - name: If firewalld enabled, open api port
+      ansible.posix.firewalld:
+        port: "{{ api_port }}/tcp"
+        zone: internal
+        state: enabled
+        permanent: true
+        immediate: true
+
+    - name: If firewalld enabled, open etcd ports
+      when: groups[server_group] | length > 1
+      ansible.posix.firewalld:
+        port: "2379-2381/tcp"
+        zone: internal
+        state: enabled
+        permanent: true
+        immediate: true
+
+    - name: If firewalld enabled, open inter-node ports
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        zone: internal
+        state: enabled
+        permanent: true
+        immediate: true
+      with_items:
+        - 5001/tcp   # Spegel (Embedded distributed registry)
+        - 8472/udp   # Flannel VXLAN
+        - 10250/tcp  # Kubelet metrics
+        - 51820/udp  # Flannel Wireguard (IPv4)
+        - 51821/udp  # Flannel Wireguard (IPv6)
+
+    - name: If firewalld enabled, allow node CIDRs
+      ansible.posix.firewalld:
+        source: "{{ item }}"
+        zone: internal
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: >-
+        {{
+          (
+            groups[server_group] | default([])
+            + groups[agent_group] | default([])
+          )
+          | map('extract', hostvars, ['ansible_default_ipv4', 'address'])
+          | flatten | unique | list
+        }}
+
+    - name: If firewalld enabled, allow default CIDRs
+      ansible.posix.firewalld:
+        source: "{{ item }}"
+        zone: trusted
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: "{{ (cluster_cidr + ',' + service_cidr) | split(',') }}"

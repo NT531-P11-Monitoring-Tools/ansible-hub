@@ -1,0 +1,15 @@
+---
+monitoring_fe_ip: 192.168.120.20
+monitoring_be_ip: 192.168.120.21
+k3s_master_ip: 192.168.110.10
+k3s_listen_port: 6443
+domain_name: th1enlm02.live
+prometheus_domain: prometheus.{{ domain_name }}
+prometheus_listen_port: 9090
+loki_domain: loki.{{ domain_name }}
+loki_listen_port: 3100
+grafana_domain: grafana.{{ domain_name }}
+grafana_listen_port: 3000
+icinga_domain: icinga.{{ domain_name }}
+icinga_listen_port: 80
+application_url: https://application.{{ domain_name }}
