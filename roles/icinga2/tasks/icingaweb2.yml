@@ -1,0 +1,36 @@
+- name: Install Icinga Web 2 and Icinga CLI
+  ansible.builtin.apt:
+    name:
+      - icingaweb2
+      - icingacli
+    state: present
+    update_cache: true
+
+- name: Create MySQL database for icingaweb2
+  ansible.builtin.mysql_db:
+    name: icingaweb2
+    state: present
+    login_user: root
+    login_password: '{{ mysql_root_password }}'
+    login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+- name: Create MySQL user for icingaweb2
+  ansible.builtin.mysql_user:
+    name: icingaweb2
+    password: '{{ icingaweb2_admin_password }}'
+    host: localhost
+    priv: 'icingaweb2.*:ALL'
+    state: present
+    login_user: root
+    login_password: '{{ mysql_root_password }}'
+    login_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+- name: Flush MySQL privileges
+  ansible.builtin.mysql_db:
+    name: icingaweb2
+    state: present
+    collation: utf8_general_ci
+    encoding: utf8
+    login_user: root
+    login_password: '{{ mysql_root_password }}'
+    login_unix_socket: "/var/run/mysqld/mysqld.sock"

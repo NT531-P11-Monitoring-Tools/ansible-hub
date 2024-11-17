@@ -1,0 +1,11 @@
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install monitoring-plugins
+  ansible.builtin.apt:
+    name:
+      - monitoring-plugins
+      - monitoring-plugins-standard
+      - nagios-plugins-contrib
+    state: present

@@ -1,0 +1,227 @@
+// Service Groups Definition
+object ServiceGroup "ping" {
+  display_name = "Ping Checks"
+  assign where match("ping*", service.name)
+}
+
+object ServiceGroup "system" {
+  display_name = "System Checks"
+  assign where match("system-*", service.name)
+}
+
+object ServiceGroup "web" {
+  display_name = "Web Services"
+  assign where match("http-*", service.name)
+}
+
+object ServiceGroup "api" {
+  display_name = "API Services"
+  assign where match("*-api-health", service.name)
+}
+
+// Basic Network Services
+apply Service "ping4" {Ư
+  import "generic-service"
+  check_command = "ping4"
+  assign where host.address
+}
+
+apply Service "ping6" {
+  import "generic-service"
+  check_command = "ping6"
+  assign where host.address6
+}
+
+apply Service "ssh" {
+  import "generic-service"
+  check_command = "ssh"
+  assign where (host.address || host.address6) && host.vars.os == "Linux"
+}
+
+// Web VHost Monitoring
+apply Service for (http_vhost => config in host.vars.http_vhosts) {
+  import "generic-service"
+  check_command = "http"
+  vars += config
+}
+
+// Frontend Monitoring
+apply Service "http-frontend" {
+  import "generic-service"
+  check_command = "http"
+  vars.http_ssl = true
+  vars.http_vhost = "application.th1enlm02.live"
+  assign where host.name == "frontend"
+}
+
+// API Health Checks
+apply Service "student-api-health" {
+  import "generic-service"
+  check_command = "http"
+  vars.http_ssl = true
+  vars.http_uri = "/student/getAll"
+  vars.http_vhost = "student-api.th1enlm02.live"
+  assign where host.name == "student-api"
+}
+
+apply Service "lecturer-api-health" {
+  import "generic-service"
+  check_command = "http"
+  vars.http_ssl = true
+  vars.http_uri = "/lecturer/getAll"
+  vars.http_vhost = "lecturer-api.th1enlm02.live"
+  assign where host.name == "lecturer-api"
+}
+
+apply Service "class-api-health" {
+  import "generic-service"
+  check_command = "http"
+  vars.http_ssl = true
+  vars.http_uri = "/class/getAll"
+  vars.http_vhost = "class-api.th1enlm02.live"
+  assign where host.name == "class-api"
+}
+
+// System Check Commands
+object CheckCommand "system-procs" {
+  import "plugin-check-command"
+  command = [ PluginDir + "/check_procs" ]
+  arguments = {
+    "-w" = {
+      value = "$procs_warning$"
+      description = "Warning threshold"
+    }
+    "-c" = {
+      value = "$procs_critical$"
+      description = "Critical threshold"
+    }
+    "-s" = {
+      value = "$procs_state$"
+      description = "Process state"
+    }
+    "--metric" = {
+      value = "$procs_metric$"
+      description = "Check metric"
+    }
+  }
+  vars.procs_warning = "250"
+  vars.procs_critical = "400"
+}
+
+object CheckCommand "system-disk" {
+  import "plugin-check-command"
+  command = [ PluginDir + "/check_disk" ]
+  arguments = {
+    "-w" = {
+      value = "$disk_wfree$%"
+      description = "Warning threshold percent free space"
+    }
+    "-c" = {
+      value = "$disk_cfree$%"
+      description = "Critical threshold percent free space"
+    }
+    "-W" = {
+      value = "$disk_winodes$%"
+      description = "Warning threshold percent free inodes"
+    }
+    "-K" = {
+      value = "$disk_cinodes$%"
+      description = "Critical threshold percent free inodes"
+    }
+    "-X" = {
+      value = "$disk_exclude_type$"
+      description = "Exclude filesystem types"
+    }
+    "-l" = {
+      set_if = "$disk_show_labels$"
+      description = "Show volume labels"
+    }
+  }
+  vars.disk_wfree = "20"
+  vars.disk_cfree = "10"
+  vars.disk_winodes = "20"
+  vars.disk_cinodes = "10"
+  vars.disk_exclude_type = [ "tmpfs", "devtmpfs", "devfs", "overlay", "aufs", "squashfs" ]
+  vars.disk_show_labels = true
+}
+
+object CheckCommand "system-users" {
+  import "plugin-check-command"
+  command = [ PluginDir + "/check_users" ]
+  arguments = {
+    "-w" = {
+      value = "$users_warning$"
+      description = "Warning threshold for logged in users"
+    }
+    "-c" = {
+      value = "$users_critical$"
+      description = "Critical threshold for logged in users"
+    }
+  }
+  vars.users_warning = "20"
+  vars.users_critical = "50"
+}
+
+// System Monitoring Services
+apply Service "system-load" {
+  import "generic-service"
+  check_command = "load"
+  vars.load_wload1 = 5
+  vars.load_wload5 = 4
+  vars.load_wload15 = 3
+  vars.load_cload1 = 10
+  vars.load_cload5 = 8
+  vars.load_cload15 = 6
+  assign where host.name != ""
+}
+
+apply Service "system-processes" {
+  import "generic-service"
+  check_command = "system-procs"
+  assign where host.name != ""
+}
+
+apply Service "system-zombie-procs" {
+  import "generic-service"
+  check_command = "system-procs"
+  vars.procs_state = "Z"
+  vars.procs_warning = "5"
+  vars.procs_critical = "10"
+  assign where host.name != ""
+}
+
+apply Service "system-high-cpu-procs" {
+  import "generic-service"
+  check_command = "system-procs"
+  vars.procs_metric = "CPU"
+  vars.procs_warning = "90"
+  vars.procs_critical = "95"
+  assign where host.name != ""
+}
+
+apply Service "system-disk-space" {
+  import "generic-service"
+  check_command = "system-disk"
+  assign where host.name != ""
+}
+
+apply Service "system-disk-inodes" {
+  import "generic-service"
+  check_command = "system-disk"
+  vars.disk_winodes = "20"
+  vars.disk_cinodes = "10"
+  assign where host.name != ""
+}
+
+apply Service "system-users" {
+  import "generic-service"
+  check_command = "system-users"
+  assign where host.name != ""
+}
+
+// Icinga Self-Monitoring
+apply Service "icinga" {
+  import "generic-service"
+  check_command = "icinga"
+  assign where host.name == NodeName
+}

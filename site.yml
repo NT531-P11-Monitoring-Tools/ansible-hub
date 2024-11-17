@@ -1,4 +1,11 @@
 ---
+- name: Install common packages
+  hosts: all
+  gather_facts: true
+  become: true
+  roles:
+    - common
+
 - name: Install HAProxy
   hosts: bastion_host
   gather_facts: yes

@@ -1,0 +1,118 @@
+/*
+ * Host definitions with object attributes
+ * used for apply rules for Service, Notification,
+ * Dependency and ScheduledDowntime objects.
+ *
+ * Tip: Use `icinga2 object list --type Host` to
+ * list all host objects after running
+ * configuration validation (`icinga2 daemon -C`).
+ */
+
+/*
+ * This is an example host based on your
+ * local host's FQDN. Specify the NodeName
+ * constant in `constants.conf` or use your
+ * own description, e.g. "db-host-1".
+ */
+
+object Host NodeName {
+  /* Import the default host template defined in `templates.conf`. */
+  import "generic-host"
+
+  /* Specify the address attributes for checks e.g. `ssh` or `http`. */
+  address = "127.0.0.1"
+  address6 = "::1"
+
+  /* Set custom variable `os` for hostgroup assignment in `groups.conf`. */
+  vars.os = "Linux"
+
+  /* Define http vhost attributes for service apply rules in `services.conf`. */
+  vars.http_vhosts["http"] = {
+    http_uri = "/"
+  }
+  /* Uncomment if you've successfully installed Icinga Web 2. */
+  //vars.http_vhosts["Icinga Web 2"] = {
+  //  http_uri = "/icingaweb2"
+  //}
+
+  /* Define disks and attributes for service apply rules in `services.conf`. */
+  vars.disks["disk"] = {
+    /* No parameters. */
+  }
+  vars.disks["disk /"] = {
+    disk_partitions = "/"
+  }
+
+  /* Define notification mail attributes for notification apply rules in `notifications.conf`. */
+  vars.notification["mail"] = {
+    /* The UserGroup `icingaadmins` is defined in `users.conf`. */
+    groups = [ "icingaadmins" ]
+  }
+}
+object Host "frontend" {
+  import "generic-host"
+  address = "application.th1enlm02.live"
+  vars.http_vhost = "application.th1enlm02.live"
+  check_command = "http"
+}
+
+// Student API Host
+object Host "student-api" {
+  import "generic-host"
+  address = "student-api.th1enlm02.live"
+  vars.http_vhost = "student-api.th1enlm02.live"
+  check_command = "http"
+}
+
+// Lecturer API Host
+object Host "lecturer-api" {
+  import "generic-host"
+  address = "lecturer-api.th1enlm02.live"
+  vars.http_vhost = "lecturer-api.th1enlm02.live"
+  check_command = "http"
+}
+
+// Class API Host
+object Host "class-api" {
+  import "generic-host"
+  address = "class-api.th1enlm02.live"
+  vars.http_vhost = "class-api.th1enlm02.live"
+  check_command = "http"
+}
+
+// Infrastructure Hosts
+object Host "bastion" {
+  import "generic-host"
+  address = "192.168.130.30"
+  check_command = "hostalive"
+}
+
+object Host "monitoring-fe" {
+  import "generic-host"
+  address = "192.168.120.20"
+  check_command = "hostalive"
+}
+
+object Host "monitoring-be" {
+  import "generic-host"
+  address = "192.168.120.21"
+  check_command = "hostalive"
+}
+
+object Host "k3s-master" {
+  import "generic-host"
+  address = "192.168.110.10"
+  check_command = "hostalive"
+}
+
+object Host "k3s-worker-1" {
+  import "generic-host"
+  address = "192.168.110.11"
+  check_command = "hostalive"
+}
+
+object Host "k3s-worker-2" {
+  import "generic-host"
+  address = "192.168.110.12"
+  check_command = "hostalive"
+}

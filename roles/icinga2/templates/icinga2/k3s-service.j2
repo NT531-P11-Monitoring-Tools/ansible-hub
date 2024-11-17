@@ -1,0 +1,169 @@
+object ServiceGroup "k3s" {
+  display_name = "K3S Health Checks"
+  assign where match("K3s *", service.display_name)
+}
+
+object Host "kubernetes-cluster" { 
+    import "generic-host" 
+    address = "192.168.110.10"  // Use an appropriate address 
+    check_command = "hostalive" 
+} 
+
+object CheckCommand "check_kube" {
+    command = [ PluginDir + "/check_kube" ]
+    
+    arguments = {
+        "-t" = {
+            value = "$k8s_type$"
+            description = "Check type (node|deployment|daemonset|replicationcontroller|componentstatuses)"
+            required = true
+        }
+        "-c" = {
+            value = "$k8s_condition$"
+            description = "Condition to check (MemoryPressure|DiskPressure|PIDPressure|Ready|Available|Progressing|status)"
+            required = true
+        }
+        "-n" = {
+            value = "$k8s_namespace$"
+            description = "Kubernetes namespace"
+            required = true
+        }
+        "-o" = {
+            value = "$k8s_object_name$"
+            description = "Object name to check"
+            required = true
+        }
+        "-k" = {
+            value = "$k8s_kubeconfig$"
+            description = "Kubeconfig file path"
+            required = true
+        }
+    }
+    
+    env = {
+        "PATH" = "/usr/local/bin:/usr/bin:/bin"
+    }
+}
+
+# Default kubeconfig value for all services
+template Service "k3s-service" {
+    vars.k8s_kubeconfig = "/var/www/.kube/config"
+}
+
+# Node Monitoring
+apply Service "k3s-node-" for (nodename in ["ip-192-168-110-10", "ip-192-168-110-11", "ip-192-168-110-12"]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "node"
+    vars.k8s_condition = "Ready"
+    vars.k8s_namespace = "default"
+    vars.k8s_object_name = nodename
+    
+    display_name = "K3s Node Status - " + nodename
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}
+
+# Critical System Deployments
+apply Service "k3s-system-deployment-" for (deployment in ["coredns", "local-path-provisioner", "metrics-server", "traefik"]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "deployment"
+    vars.k8s_condition = "Available"
+    vars.k8s_namespace = "kube-system"
+    vars.k8s_object_name = deployment
+    
+    display_name = "K3s System Deployment - " + deployment
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}
+
+# Microservices Deployments 
+apply Service "k3s-microservice-deployment-" for (deployment in [
+    "auth-deployment",
+    "auth-mysql-deployment", 
+    "class-deployment",
+    "class-postgresql-deployment",
+    "frontend-deployment",
+    "lecturer-deployment", 
+    "lecturer-mongodb-deployment",
+    "student-deployment",
+    "student-mysql-deployment"
+]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "deployment"
+    vars.k8s_condition = "Available"
+    vars.k8s_namespace = "microservices"
+    vars.k8s_object_name = deployment
+    
+    display_name = "K3s Microservice - " + deployment
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}
+
+# Monitoring Deployments
+apply Service "k3s-monitoring-deployment-" for (deployment in [
+    "prometheus-stack-kube-prom-operator",
+    "prometheus-stack-kube-state-metrics"
+]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "deployment"
+    vars.k8s_condition = "Available"
+    vars.k8s_namespace = "monitoring"
+    vars.k8s_object_name = deployment
+    
+    display_name = "K3s Monitoring - " + deployment
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}
+
+# DaemonSets
+apply Service "k3s-daemonset-" for (daemonset in [
+    "svclb-traefik-a1495259",
+    "prometheus-stack-prometheus-node-exporter"
+]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "daemonset"
+    vars.k8s_condition = "status"
+    vars.k8s_namespace = daemonset.contains("traefik") ? "kube-system" : "monitoring"
+    vars.k8s_object_name = daemonset
+    
+    display_name = "K3s DaemonSet - " + daemonset
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}
+
+# Node Memory Monitoring
+apply Service "k3s-node-memory-" for (nodename in ["ip-192-168-110-10", "ip-192-168-110-11", "ip-192-168-110-12"]) {
+    import "generic-service"
+    import "k3s-service"
+    check_command = "check_kube"
+    
+    vars.k8s_type = "node"
+    vars.k8s_condition = "MemoryPressure"
+    vars.k8s_namespace = "default"
+    vars.k8s_object_name = nodename
+    
+    display_name = "K3s Node Memory - " + nodename
+    check_interval = 1m
+    
+    assign where host.name == "kubernetes-cluster"
+}

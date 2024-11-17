@@ -1,0 +1,43 @@
+# Cài đặt InfluxDB và InfluxDB client
+- name: Install influxdb and influxdb-client
+  apt:
+    name:
+      - influxdb
+      - influxdb-client
+    state: present
+    update_cache: yes
+
+# Bắt đầu dịch vụ InfluxDB
+- name: Ensure InfluxDB is started and enabled
+  systemd:
+    name: influxdb
+    state: started
+    enabled: yes
+
+# Tạo cơ sở dữ liệu và người dùng cho Icinga2
+- name: Create icinga2 database and user in InfluxDB
+  influxdb_database:
+    name: icinga2
+    state: present
+  register: influx_db_created
+
+- name: Create user for icinga2 in InfluxDB
+  influxdb_user:
+    name: icinga2
+    password: "{{ icinga_db_password }}"
+    databases:
+      - icinga2
+    state: present
+  when: influx_db_created.changed
+
+# Kích hoạt feature influxdb trong Icinga2
+- name: Enable influxdb feature in Icinga2
+  command: icinga2 feature enable influxdb
+  notify: Restart Icinga2
+
+# Cấu hình InfluxDB cho Icinga2
+- name: Configure influxdb.conf for Icinga2
+  template:
+    src: influxdb.conf.j2
+    dest: /etc/icinga2/features-enabled/influxdb.conf
+  notify: Restart Icinga2
